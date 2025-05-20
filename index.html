@@ -1,0 +1,235 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Multi-Account Tool (Mobile Enhanced)</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #0f001f;
+      color: white;
+      margin: 0;
+      padding: 1rem 1rem 80px;
+    }
+    h2 {
+      margin-top: 0;
+      text-align: center;
+      font-size: 1.5rem;
+      background: linear-gradient(90deg, #d17aff, #9b30ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      max-width: 600px;
+      margin: auto;
+    }
+    .section {
+      background: #180030;
+      padding: 1rem;
+      border-radius: 10px;
+    }
+    textarea, input {
+      width: 100%;
+      padding: 1rem;
+      margin: 0.5rem 0;
+      font-size: 1rem;
+      border-radius: 10px;
+      border: none;
+      background: #29003a;
+      color: white;
+    }
+    button {
+      background: linear-gradient(90deg, #c440ff, #9f00ff, #a800f3, #e040ff);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 1rem;
+      font-size: 1rem;
+      margin-top: 1rem;
+      width: 100%;
+    }
+    .fixed-buttons {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #0f001f;
+      padding: 0.5rem 1rem;
+      display: flex;
+      gap: 0.5rem;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.4);
+    }
+    .fixed-buttons button {
+      flex: 1;
+      margin-top: 0;
+    }
+    pre {
+      background: #1f0030;
+      padding: 1rem;
+      border-radius: 10px;
+      margin-top: 1rem;
+      white-space: pre-wrap;
+      max-height: 300px;
+      overflow-y: auto;
+      font-size: 0.9rem;
+    }
+    footer {
+      text-align: center;
+      margin-top: 2rem;
+      font-size: 0.9rem;
+      color: #ccc;
+    }
+    footer a {
+      color: #a66bff;
+    }
+  </style>
+</head>
+<body>
+  <h2>複数アカウント自動操作ツール</h2>
+  <div class="container">
+    <div class="section">
+      <h3>① サーバー一斉参加</h3>
+      <textarea id="tokens" placeholder="アカウントトークン一覧（1行1つ）"></textarea>
+      <input type="text" id="inviteCode" placeholder="参加する招待コード（例: discord.gg/xxxx）">
+    </div>
+
+    <div class="section">
+      <h3>② チャンネル一斉送信</h3>
+      <input type="text" id="channelId" placeholder="チャンネルID">
+      <textarea id="message" placeholder="送信メッセージ内容"></textarea>
+      <input type="number" id="repeat" placeholder="送信回数" value="1">
+      <input type="number" id="delay" placeholder="送信間隔（ms）" value="1000">
+    </div>
+
+    <div class="section">
+      <h3>③ DM一斉送信（社長など）</h3>
+      <input type="text" id="dmTarget" placeholder="DM送信対象ユーザーID">
+      <textarea id="dmMessage" placeholder="DMメッセージ内容（全トークンから送信）"></textarea>
+    </div>
+
+    <div class="section">
+      <h3>📝 実行ログ</h3>
+      <pre id="log"></pre>
+      <footer>
+        開発者：みぞがみ ｜ <a href="https://discord.gg/KmFPMeGC" target="_blank">サポートサーバー</a>
+      </footer>
+    </div>
+  </div>
+
+  <div class="fixed-buttons">
+    <button onclick="joinServer()">🚪 サーバー参加</button>
+    <button onclick="sendMessages()">📣 チャンネル送信</button>
+    <button onclick="sendDMs()">📩 DM送信</button>
+  </div>
+
+  <script>
+    const log = (msg) => {
+      const el = document.getElementById("log");
+      el.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+      el.scrollTop = el.scrollHeight;
+    };
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    window.onload = () => {
+      const saved = localStorage.getItem("tokens");
+      if (saved) document.getElementById("tokens").value = saved;
+    };
+
+    function saveTokens(tokens) {
+      localStorage.setItem("tokens", tokens);
+    }
+
+    async function joinServer() {
+      const tokens = document.getElementById("tokens").value.trim();
+      saveTokens(tokens);
+      const inviteCode = document.getElementById("inviteCode").value.trim().split("/").pop();
+      for (const token of tokens.split(/\n+/)) {
+        try {
+          const res = await fetch(`https://discord.com/api/v9/invites/${inviteCode}`, {
+            method: "POST",
+            headers: {
+              "Authorization": token,
+              "Content-Type": "application/json"
+            }
+          });
+          const data = await res.json();
+          log(`✅ サーバー参加: ${data.guild?.name || JSON.stringify(data)}`);
+        } catch (e) {
+          log(`❌ サーバー参加失敗: ${e.message}`);
+        }
+        await sleep(500);
+      }
+    }
+
+    async function sendMessages() {
+      const tokens = document.getElementById("tokens").value.trim();
+      saveTokens(tokens);
+      const channelId = document.getElementById("channelId").value.trim();
+      const message = document.getElementById("message").value.trim();
+      const repeat = parseInt(document.getElementById("repeat").value);
+      const delay = parseInt(document.getElementById("delay").value);
+
+      for (const token of tokens.split(/\n+/)) {
+        for (let i = 0; i < repeat; i++) {
+          try {
+            await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
+              method: "POST",
+              headers: {
+                "Authorization": token,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({ content: message })
+            });
+            log(`✉️ メッセージ送信成功 (${i + 1}/${repeat})`);
+          } catch (e) {
+            log(`❌ メッセージ送信失敗: ${e.message}`);
+          }
+          await sleep(delay);
+        }
+      }
+    }
+
+    async function sendDMs() {
+      const tokens = document.getElementById("tokens").value.trim();
+      saveTokens(tokens);
+      const targetId = document.getElementById("dmTarget").value.trim();
+      const content = document.getElementById("dmMessage").value.trim();
+
+      for (const token of tokens.split(/\n+/)) {
+        try {
+          const res = await fetch("https://discord.com/api/v9/users/@me/channels", {
+            method: "POST",
+            headers: {
+              "Authorization": token,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ recipients: [targetId] })
+          });
+          const dm = await res.json();
+          if (dm.id) {
+            await fetch(`https://discord.com/api/v9/channels/${dm.id}/messages`, {
+              method: "POST",
+              headers: {
+                "Authorization": token,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({ content })
+            });
+            log("📩 DM送信成功");
+          } else {
+            log("❌ DM作成失敗");
+          }
+        } catch (e) {
+          log(`❌ DM送信失敗: ${e.message}`);
+        }
+        await sleep(500);
+      }
+    }
+  </script>
+</body>
+</html>
